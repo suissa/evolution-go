@@ -471,6 +471,9 @@ func GetMessageType(waMsg *waE2E.Message) string {
 	case waMsg.ContactsArrayMessage != nil:
 		return "contact array"
 	case waMsg.LocationMessage != nil:
+		if waMsg.GetLocationMessage().GetIsLive() {
+			return "live location start"
+		}
 		return "location"
 	case waMsg.LiveLocationMessage != nil:
 		return "live location start"
