@@ -130,6 +130,9 @@ type MyClient struct {
 	loggerWrapper      *logger_wrapper.LoggerManager
 	qrcodeCount        int
 	passkeyCeremony    *ceremony.Store
+
+	liveLocationMu            sync.Mutex
+	liveLocationSubscriptions map[string]context.CancelFunc
 }
 
 func (mycli *MyClient) persistMessageAsync(message message_model.Message) {
@@ -853,7 +856,58 @@ func (mycli *MyClient) teardownQR(reason string, forceLogout bool) {
 	}
 }
 
-func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
+// subscribeLiveLocation keeps a subscription active while WhatsApp shares a live location.
+ // The subscription is refreshed every 30 seconds and expires after the normal 8-hour
+ // sharing window to avoid leaking goroutines if no end notification is delivered.
+ func (mycli *MyClient) subscribeLiveLocation(target types.JID) {
+ 	if mycli == nil || mycli.WAClient == nil || target.IsEmpty() {
+ 		return
+ 	}
+ 	target = target.ToNonAD()
+ 	key := target.String()
+
+ 	mycli.liveLocationMu.Lock()
+ 	if mycli.liveLocationSubscriptions == nil {
+ 		mycli.liveLocationSubscriptions = make(map[string]context.CancelFunc)
+ 	}
+ 	if _, exists := mycli.liveLocationSubscriptions[key]; exists {
+ 		mycli.liveLocationMu.Unlock()
+ 		return
+ 	}
+ 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Hour)
+ 	mycli.liveLocationSubscriptions[key] = cancel
+ 	mycli.liveLocationMu.Unlock()
+
+ 	go func() {
+ 		defer func() {
+ 			cancel()
+ 			mycli.liveLocationMu.Lock()
+ 			delete(mycli.liveLocationSubscriptions, key)
+ 			mycli.liveLocationMu.Unlock()
+ 		}()
+
+ 		ticker := time.NewTicker(30 * time.Second)
+ 		defer ticker.Stop()
+ 		for {
+ 			requestCtx, requestCancel := context.WithTimeout(ctx, 12*time.Second)
+ 			err := mycli.WAClient.SubscribeLiveLocation(requestCtx, target)
+ 			requestCancel()
+ 			if err != nil {
+ 				mycli.loggerWrapper.GetLogger(mycli.userID).LogWarn("[%s] Live-location subscription for %s failed: %v", mycli.userID, target.String(), err)
+ 			} else {
+ 				mycli.loggerWrapper.GetLogger(mycli.userID).LogInfo("[%s] Subscribed to live-location updates from %s", mycli.userID, target.String())
+ 			}
+
+ 			select {
+ 			case <-ctx.Done():
+ 				return
+ 			case <-ticker.C:
+ 			}
+ 		}
+ 	}()
+ }
+
+ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 	userID := mycli.userID
 	postMap := make(map[string]interface{})
 	postMap["data"] = rawEvt
@@ -1267,9 +1321,15 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 		}
 
 		// Keep a simple discriminator alongside the raw protobuf payload for webhook consumers.
-		if evt.Message.GetLiveLocationMessage() != nil ||
-			(evt.Message.GetLocationMessage() != nil && evt.Message.GetLocationMessage().GetIsLive()) {
+		isLiveLocation := evt.Message.GetLiveLocationMessage() != nil ||
+			(evt.Message.GetLocationMessage() != nil && evt.Message.GetLocationMessage().GetIsLive())
+		if isLiveLocation {
 			dataMap["messageType"] = "liveLocation"
+			if !evt.Info.IsFromMe {
+				// The conversation JID is the target for location/subscribe
+				// (a direct chat JID for 1:1 shares, the group JID for group shares).
+				mycli.subscribeLiveLocation(evt.Info.Chat)
+			}
 		}
 
 		referral := extractReferralFromMessage(evt.Message)
