@@ -486,13 +486,15 @@ func (s *sendHandler) SendLiveLocation(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "longitude must be between -180 and 180"})
 		return
 	}
-	if data.SequenceNumber == nil || *data.SequenceNumber < 1 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "sequenceNumber must be at least 1"})
-		return
-	}
-	if data.TimeOffset == nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "timeOffset is required"})
-		return
+	if data.Update {
+		if data.SequenceNumber == nil || *data.SequenceNumber < 1 {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "sequenceNumber must be at least 1 for an update"})
+			return
+		}
+		if data.TimeOffset == nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "timeOffset is required for an update"})
+			return
+		}
 	}
 
 	message, err := s.sendMessageService.SendLiveLocation(data, instance)
