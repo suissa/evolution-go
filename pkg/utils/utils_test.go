@@ -3,6 +3,8 @@ package utils
 import (
 	"strings"
 	"testing"
+
+	"go.mau.fi/whatsmeow/proto/waE2E"
 )
 
 func TestCreateJID(t *testing.T) {
@@ -382,5 +384,21 @@ func TestCanonicalJID(t *testing.T) {
 				t.Errorf("CanonicalJID for input %q still has '+' in User: %q", tt.input, canonical.User)
 			}
 		})
+	}
+}
+
+
+func TestGetMessageTypeLiveLocation(t *testing.T) {
+	if got := GetMessageType(&waE2E.Message{LiveLocationMessage: &waE2E.LiveLocationMessage{}}); got != "live location start" {
+		t.Errorf("LiveLocationMessage type = %q, want %q", got, "live location start")
+	}
+
+	isLive := true
+	if got := GetMessageType(&waE2E.Message{LocationMessage: &waE2E.LocationMessage{IsLive: &isLive}}); got != "live location start" {
+		t.Errorf("LocationMessage with IsLive=true type = %q, want %q", got, "live location start")
+	}
+
+	if got := GetMessageType(&waE2E.Message{LocationMessage: &waE2E.LocationMessage{}}); got != "location" {
+		t.Errorf("static LocationMessage type = %q, want %q", got, "location")
 	}
 }
