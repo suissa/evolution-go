@@ -275,9 +275,7 @@ func run() error {
 		}
 		patched = strings.Replace(patched, replacement.old, replacement.new, 1)
 	}
-	patched += "
-
-" + `// isFastRatchetSenderKeyMessage recognizes encrypted envelopes used for live-location updates.
+	patched += "\n\n" + `// isFastRatchetSenderKeyMessage recognizes encrypted envelopes used for live-location updates.
 // Both spellings have been observed in WhatsApp traffic.
 func isFastRatchetSenderKeyMessage(encType string) bool {
 	return encType == "frskmsg" || encType == "fskmsg"
@@ -293,8 +291,7 @@ func isFastRatchetSenderKeyMessage(encType string) bool {
 	if err := writeExtensionFiles(moduleDir, locationPath, testPath); err != nil {
 		return err
 	}
-	fmt.Printf("Patched %s for encrypted live-location updates in %s
-", modulePath, moduleDir)
+	fmt.Printf("Patched %s for encrypted live-location updates in %s\n", modulePath, moduleDir)
 	return nil
 }
 
