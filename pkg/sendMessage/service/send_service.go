@@ -184,8 +184,8 @@ type LiveLocationStruct struct {
 // LiveLocationForwardStruct configures automatic recreation of an incoming
 // live-location share to another recipient for this Evolution instance.
 type LiveLocationForwardStruct struct {
-	SourceNumber   string `json:"sourceNumber"`
-	Number         string `json:"number,omitempty"`
+	SourceNumber    string `json:"sourceNumber"`
+	Number          string `json:"number,omitempty"`
 	DurationMinutes uint32 `json:"durationMinutes,omitempty"`
 }
 
