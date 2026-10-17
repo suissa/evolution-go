@@ -158,12 +158,10 @@ func run() error {
 			if err = os.Remove(testPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return fmt.Errorf("remove live-location tests during restore: %w", err)
 			}
-			fmt.Printf("Restored upstream %s source in %s
-", modulePath, moduleDir)
+			fmt.Printf("Restored upstream %s source in %s\n", modulePath, moduleDir)
 			return nil
 		} else if errors.Is(err, os.ErrNotExist) {
-			fmt.Printf("No Evolution GO whatsmeow patch found in %s; nothing to restore
-", moduleDir)
+			fmt.Printf("No Evolution GO whatsmeow patch found in %s; nothing to restore\n", moduleDir)
 			return nil
 		} else {
 			return fmt.Errorf("inspect upstream backup: %w", err)
@@ -178,8 +176,7 @@ func run() error {
 		if err := writeExtensionFiles(moduleDir, locationPath, testPath); err != nil {
 			return err
 		}
-		fmt.Printf("%s already supports live-location updates
-", modulePath)
+		fmt.Printf("%s already supports live-location updates\n", modulePath)
 		return nil
 	}
 
