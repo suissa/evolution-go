@@ -2915,6 +2915,10 @@ func (s *sendService) SendMessage(instance *instance_model.Instance, msg *waE2E.
 	}
 
 	messageData["Message"] = msgMap
+	if messageType == "LiveLocationMessage" ||
+		(msg.GetLocationMessage() != nil && msg.GetLocationMessage().GetIsLive()) {
+		messageData["messageType"] = "liveLocation"
+	}
 	messageData["MessageContextInfo"] = messageSent.MessageContextInfo
 
 	postMap["data"] = messageData
