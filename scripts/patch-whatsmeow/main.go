@@ -8,6 +8,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"go/format"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -278,6 +279,11 @@ func isFastRatchetSenderKeyMessage(encType string) bool {
 	return encType == "frskmsg" || encType == "fskmsg"
 }
 `
+	formatted, err := format.Source([]byte(patched))
+	if err != nil {
+		return fmt.Errorf("format patched whatsmeow message.go: %w", err)
+	}
+	patched = string(formatted)
 
 	if err := makeWritable(moduleDir, sourcePath); err != nil {
 		return err
@@ -306,10 +312,18 @@ func writeExtensionFiles(moduleDir, locationPath, testPath string) error {
 	if err := os.Chmod(moduleDir, 0o755); err != nil {
 		return fmt.Errorf("make whatsmeow module directory writable: %w", err)
 	}
-	if err := os.WriteFile(locationPath, []byte(subscribeSource), 0o644); err != nil {
+	formattedLocation, err := format.Source([]byte(subscribeSource))
+	if err != nil {
+		return fmt.Errorf("format whatsmeow live-location subscription method: %w", err)
+	}
+	formattedTests, err := format.Source([]byte(liveLocationTestSource))
+	if err != nil {
+		return fmt.Errorf("format whatsmeow live-location tests: %w", err)
+	}
+	if err := os.WriteFile(locationPath, formattedLocation, 0o644); err != nil {
 		return fmt.Errorf("write whatsmeow live-location subscription method: %w", err)
 	}
-	if err := os.WriteFile(testPath, []byte(liveLocationTestSource), 0o644); err != nil {
+	if err := os.WriteFile(testPath, formattedTests, 0o644); err != nil {
 		return fmt.Errorf("write whatsmeow live-location tests: %w", err)
 	}
 	return nil
