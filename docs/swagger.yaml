@@ -730,6 +730,43 @@ definitions:
       quoted:
         $ref: '#/definitions/github_com_EvolutionAPI_evolution-go_pkg_sendMessage_service.QuotedStruct'
     type: object
+  github_com_EvolutionAPI_evolution-go_pkg_sendMessage_service.LiveLocationStruct:
+    properties:
+      accuracyInMeters:
+        type: integer
+      caption:
+        type: string
+      degreesClockwiseFromMagneticNorth:
+        type: integer
+      delay:
+        type: integer
+      formatJid:
+        type: boolean
+      id:
+        type: string
+      latitude:
+        type: number
+      longitude:
+        type: number
+      mentionAll:
+        type: boolean
+      mentionedJid:
+        items:
+          type: string
+        type: array
+      number:
+        type: string
+      quoted:
+        $ref: '#/definitions/github_com_EvolutionAPI_evolution-go_pkg_sendMessage_service.QuotedStruct'
+      sequenceNumber:
+        type: integer
+      speedInMps:
+        type: number
+      timeOffset:
+        type: integer
+      update:
+        type: boolean
+    type: object
   github_com_EvolutionAPI_evolution-go_pkg_sendMessage_service.MediaStruct:
     properties:
       caption:
@@ -9248,6 +9285,36 @@ paths:
           schema:
             $ref: '#/definitions/gin.H'
       summary: Send a location message
+      tags:
+      - Send Message
+  /send/liveLocation:
+    post:
+      consumes:
+      - application/json
+      description: Sends a live-location start or update. Updates require an increasing sequenceNumber and timeOffset.
+      parameters:
+      - description: Live-location data
+        in: body
+        name: message
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_EvolutionAPI_evolution-go_pkg_sendMessage_service.LiveLocationStruct'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/gin.H'
+        "400":
+          description: Error on validation
+          schema:
+            $ref: '#/definitions/gin.H'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/gin.H'
+      summary: Send a live-location message
       tags:
       - Send Message
   /send/media:
