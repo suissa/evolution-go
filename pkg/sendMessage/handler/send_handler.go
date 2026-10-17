@@ -19,6 +19,7 @@ type SendHandler interface {
 	SendPoll(ctx *gin.Context)
 	SendSticker(ctx *gin.Context)
 	SendLocation(ctx *gin.Context)
+	SendLiveLocation(ctx *gin.Context)
 	SendContact(ctx *gin.Context)
 	SendButton(ctx *gin.Context)
 	SendList(ctx *gin.Context)
@@ -438,6 +439,67 @@ func (s *sendHandler) SendLocation(ctx *gin.Context) {
 		return
 	}
 
+	ctx.JSON(http.StatusOK, gin.H{"message": "success", "data": message})
+}
+
+// Send a native WhatsApp live-location message or update.
+// @Summary Send a live-location message
+// @Description Sends one live-location point. Send later updates with fresh coordinates and an increasing sequenceNumber.
+// @Tags Send Message
+// @Accept json
+// @Produce json
+// @Param message body send_service.LiveLocationStruct true "Live-location data"
+// @Success 200 {object} gin.H "success"
+// @Failure 400 {object} gin.H "Error on validation"
+// @Failure 500 {object} gin.H "Internal server error"
+// @Router /send/liveLocation [post]
+func (s *sendHandler) SendLiveLocation(ctx *gin.Context) {
+	getInstance := ctx.MustGet("instance")
+	instance, ok := getInstance.(*instance_model.Instance)
+	if !ok {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "instance not found"})
+		return
+	}
+
+	var data *send_service.LiveLocationStruct
+	if err := ctx.ShouldBindBodyWithJSON(&data); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if data == nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "live-location data is required"})
+		return
+	}
+	if data.Number == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "phone number is required"})
+		return
+	}
+	if data.Latitude == nil || data.Longitude == nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "latitude and longitude are required"})
+		return
+	}
+	if *data.Latitude < -90 || *data.Latitude > 90 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "latitude must be between -90 and 90"})
+		return
+	}
+	if *data.Longitude < -180 || *data.Longitude > 180 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "longitude must be between -180 and 180"})
+		return
+	}
+	if data.SequenceNumber == nil || *data.SequenceNumber < 1 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "sequenceNumber must be at least 1"})
+		return
+	}
+	if data.TimeOffset == nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "timeOffset is required"})
+		return
+	}
+
+	message, err := s.sendMessageService.SendLiveLocation(data, instance)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 	ctx.JSON(http.StatusOK, gin.H{"message": "success", "data": message})
 }
 
