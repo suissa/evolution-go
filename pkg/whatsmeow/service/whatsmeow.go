@@ -1150,7 +1150,7 @@ func (mycli *MyClient) runLiveLocationForward(key string, route *liveLocationFor
 			if !started {
 				outgoing = &waE2E.Message{LocationMessage: &waE2E.LocationMessage{
 					DegreesLatitude:                   proto.Float64(point.Latitude),
-						DegreesLongitude:                  proto.Float64(point.Longitude),
+					DegreesLongitude:                  proto.Float64(point.Longitude),
 						IsLive:                            proto.Bool(true),
 						AccuracyInMeters:                  point.AccuracyInMeters,
 						SpeedInMps:                        point.SpeedInMps,
