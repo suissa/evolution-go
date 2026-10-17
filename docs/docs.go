@@ -3120,7 +3120,7 @@ const docTemplate = `{
         },
         "/send/liveLocation": {
             "post": {
-                "description": "Sends a live-location start or update. Updates require an increasing sequenceNumber and timeOffset.",
+                "description": "Sends a live-location start or update. Updates require an increasing sequenceNumber; timeOffset is optional.",
                 "consumes": ["application/json"],
                 "produces": ["application/json"],
                 "tags": ["Send Message"],
