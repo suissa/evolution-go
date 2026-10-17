@@ -464,9 +464,9 @@ Envia uma mensagem nativa de localização em tempo real. Por padrão, cria o co
 }
 ```
 
-`number`, `latitude` e `longitude` são obrigatórios. A latitude deve estar entre -90 e 90 e a longitude entre -180 e 180. Precisão, velocidade, direção e legenda são opcionais. Para atualizações, `sequenceNumber` (a partir de 1) e `timeOffset` também são obrigatórios. Esses valores são encaminhados ao protobuf do WhatsApp sem conversão.
+`number`, `latitude` e `longitude` são obrigatórios. A latitude deve estar entre -90 e 90 e a longitude entre -180 e 180. Precisão, velocidade, direção e legenda são opcionais. Para atualizações, `sequenceNumber` (a partir de 1) é obrigatório e deve crescer a cada ponto. `timeOffset` é opcional e representa os segundos decorridos desde o início do compartilhamento; o valor é encaminhado ao protobuf do WhatsApp sem conversão.
 
-O endpoint não obtém coordenadas de GPS nem agenda atualizações automaticamente. O cliente que acompanha a localização deve enviar cada nova posição. O recebimento é publicado no webhook de `Message`, com o conteúdo protobuf em `data.Message` e o discriminador `data.messageType: "liveLocation"`.
+O endpoint não obtém coordenadas de GPS nem agenda atualizações automaticamente. O cliente que acompanha a localização deve enviar cada nova posição. O protocolo separado de assinatura de atualizações contínuas via nós `fskmsg` não está implementado nesta integração; isso exige suporte adicional no próprio `whatsmeow`, que não expõe atualmente esse handler. Quando o `whatsmeow` entrega a localização como evento `events.Message`, o webhook inclui o conteúdo protobuf em `data.Message` e o discriminador `data.messageType: "liveLocation"`. Isso cobre as mensagens normais `LocationMessage` com `isLive=true` e `LiveLocationMessage` que chegam por esse caminho.
 
 **Exemplo cURL para iniciar**:
 ```bash
