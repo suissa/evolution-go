@@ -9291,7 +9291,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Sends a live-location start or update. Updates require an increasing sequenceNumber and timeOffset.
+      description: Sends a live-location start or update. Updates require an increasing sequenceNumber; timeOffset is optional.
       parameters:
       - description: Live-location data
         in: body
