@@ -491,10 +491,6 @@ func (s *sendHandler) SendLiveLocation(ctx *gin.Context) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": "sequenceNumber must be at least 1 for an update"})
 			return
 		}
-		if data.TimeOffset == nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "timeOffset is required for an update"})
-			return
-		}
 	}
 
 	message, err := s.sendMessageService.SendLiveLocation(data, instance)
