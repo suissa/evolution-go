@@ -20,6 +20,8 @@ type SendHandler interface {
 	SendSticker(ctx *gin.Context)
 	SendLocation(ctx *gin.Context)
 	SendLiveLocation(ctx *gin.Context)
+	ForwardLiveLocation(ctx *gin.Context)
+	StopForwardLiveLocation(ctx *gin.Context)
 	SendContact(ctx *gin.Context)
 	SendButton(ctx *gin.Context)
 	SendList(ctx *gin.Context)
@@ -499,6 +501,91 @@ func (s *sendHandler) SendLiveLocation(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{"message": "success", "data": message})
+}
+
+// Arm automatic forwarding of an incoming live-location share to a customer.
+// @Summary Forward incoming live location to a customer
+// @Description When sourceNumber shares live location with this Evolution instance, recreate the native live-location stream for number.
+// @Tags Send Message
+// @Accept json
+// @Produce json
+// @Param message body send_service.LiveLocationForwardStruct true "Forwarding route"
+// @Success 200 {object} gin.H "Forwarding configured"
+// @Failure 400 {object} gin.H "Error on validation"
+// @Failure 500 {object} gin.H "Internal server error"
+// @Router /send/liveLocation/forward [post]
+func (s *sendHandler) ForwardLiveLocation(ctx *gin.Context) {
+	getInstance := ctx.MustGet("instance")
+	instance, ok := getInstance.(*instance_model.Instance)
+	if !ok {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "instance not found"})
+		return
+	}
+	var data *send_service.LiveLocationForwardStruct
+	if err := ctx.ShouldBindBodyWithJSON(&data); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if data == nil || strings.TrimSpace(data.SourceNumber) == "" || strings.TrimSpace(data.Number) == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "sourceNumber and number (customer destination) are required"})
+		return
+	}
+	if data.DurationMinutes > 8*60 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "durationMinutes cannot exceed 480 (8 hours)"})
+		return
+	}
+	if err := s.sendMessageService.ForwardLiveLocation(data, instance); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	duration := data.DurationMinutes
+	if duration == 0 {
+		duration = 60
+	}
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "success",
+		"data": gin.H{
+			"active":          true,
+			"sourceNumber":    data.SourceNumber,
+			"number":          data.Number,
+			"durationMinutes": duration,
+		},
+	})
+}
+
+// Stop automatic forwarding for a source number. The customer may still see
+// the last recreated share until WhatsApp expires it.
+// @Summary Stop live-location forwarding
+// @Description Stops relaying new live-location points from sourceNumber.
+// @Tags Send Message
+// @Accept json
+// @Produce json
+// @Param message body send_service.LiveLocationForwardStruct true "Forwarding source"
+// @Success 200 {object} gin.H "Forwarding stopped"
+// @Failure 400 {object} gin.H "Error on validation"
+// @Failure 500 {object} gin.H "Internal server error"
+// @Router /send/liveLocation/forward/stop [post]
+func (s *sendHandler) StopForwardLiveLocation(ctx *gin.Context) {
+	getInstance := ctx.MustGet("instance")
+	instance, ok := getInstance.(*instance_model.Instance)
+	if !ok {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "instance not found"})
+		return
+	}
+	var data *send_service.LiveLocationForwardStruct
+	if err := ctx.ShouldBindBodyWithJSON(&data); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if data == nil || strings.TrimSpace(data.SourceNumber) == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "sourceNumber is required"})
+		return
+	}
+	if err := s.sendMessageService.StopLiveLocationForward(data, instance); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"message": "success", "data": gin.H{"active": false, "sourceNumber": data.SourceNumber}})
 }
 
 // Send a contact message
