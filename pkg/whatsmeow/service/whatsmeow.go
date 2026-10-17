@@ -62,6 +62,8 @@ type WhatsmeowService interface {
 	UpdateInstanceSettings(instanceId string) error
 	UpdateInstanceAdvancedSettings(instanceId string) error
 	GetPollService() poll_service.PollService // NOVO: Acesso ao serviço de polls
+	StartLiveLocationForward(instanceID, sourceNumber, targetNumber string, duration time.Duration) error
+	StopLiveLocationForward(instanceID, sourceNumber string) error
 
 	// Passkey (WebAuthn) pairing bridge — read by the public ceremony endpoint,
 	// written by the whatsmeow event goroutine.
@@ -133,6 +135,7 @@ type MyClient struct {
 
 	liveLocationMu            sync.Mutex
 	liveLocationSubscriptions map[string]context.CancelFunc
+	liveLocationForwards      map[string]*liveLocationForward
 }
 
 func (mycli *MyClient) persistMessageAsync(message message_model.Message) {
@@ -172,6 +175,94 @@ type ProxyConfig struct {
 	Password string `json:"password"`
 	Port     string `json:"port"`
 	Username string `json:"username"`
+}
+
+// liveLocationPoint is the normalized, decoded content needed to recreate a
+// live-location stream. Latitude/longitude are values, not pointers, because a
+// valid coordinate can be zero (e.g. on the equator or prime meridian).
+type liveLocationPoint struct {
+	Latitude                          float64  `json:"latitude"`
+	Longitude                         float64  `json:"longitude"`
+	AccuracyInMeters                  *uint32  `json:"accuracyInMeters,omitempty"`
+	SpeedInMps                        *float32 `json:"speedInMps,omitempty"`
+	DegreesClockwiseFromMagneticNorth *uint32  `json:"degreesClockwiseFromMagneticNorth,omitempty"`
+	Caption                           *string  `json:"caption,omitempty"`
+	SequenceNumber                    int64    `json:"sequenceNumber,omitempty"`
+	TimeOffset                        uint32   `json:"timeOffset,omitempty"`
+	Update                            bool     `json:"update"`
+}
+
+type liveLocationForward struct {
+	source  types.JID
+	target  types.JID
+	ctx     context.Context
+	cancel  context.CancelFunc
+	updates chan liveLocationPoint
+}
+
+// extractLiveLocationPoint reads the actual coordinates from the decrypted
+// WhatsApp protobuf. A normal static LocationMessage is deliberately excluded.
+func extractLiveLocationPoint(msg *waE2E.Message) (liveLocationPoint, bool) {
+	if msg == nil {
+		return liveLocationPoint{}, false
+	}
+	if live := msg.GetLiveLocationMessage(); live != nil {
+		if live.DegreesLatitude == nil || live.DegreesLongitude == nil {
+			return liveLocationPoint{}, false
+		}
+		return liveLocationPoint{
+			Latitude:                          live.GetDegreesLatitude(),
+			Longitude:                         live.GetDegreesLongitude(),
+			AccuracyInMeters:                  live.AccuracyInMeters,
+			SpeedInMps:                        live.SpeedInMps,
+			DegreesClockwiseFromMagneticNorth: live.DegreesClockwiseFromMagneticNorth,
+			Caption:                           live.Caption,
+			SequenceNumber:                    live.GetSequenceNumber(),
+			TimeOffset:                        live.GetTimeOffset(),
+			Update:                            true,
+		}, true
+	}
+	if location := msg.GetLocationMessage(); location != nil && location.GetIsLive() {
+		if location.DegreesLatitude == nil || location.DegreesLongitude == nil {
+			return liveLocationPoint{}, false
+		}
+		return liveLocationPoint{
+			Latitude:                          location.GetDegreesLatitude(),
+			Longitude:                         location.GetDegreesLongitude(),
+			AccuracyInMeters:                  location.AccuracyInMeters,
+			SpeedInMps:                        location.SpeedInMps,
+			DegreesClockwiseFromMagneticNorth: location.DegreesClockwiseFromMagneticNorth,
+			Caption:                           location.Comment,
+		}, true
+	}
+	return liveLocationPoint{}, false
+}
+
+func parseLiveLocationJID(value string) (types.JID, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return types.JID{}, fmt.Errorf("phone number or JID is required")
+	}
+	if strings.Contains(value, "@") {
+		jid, err := types.ParseJID(value)
+		if err != nil {
+			return types.JID{}, fmt.Errorf("invalid JID %q: %w", value, err)
+		}
+		if jid.IsEmpty() {
+			return types.JID{}, fmt.Errorf("invalid empty JID %q", value)
+		}
+		return jid.ToNonAD(), nil
+	}
+	var digits strings.Builder
+	for _, char := range value {
+		if char >= '0' && char <= '9' {
+			digits.WriteRune(char)
+		}
+	}
+	if digits.Len() < 5 {
+		return types.JID{}, fmt.Errorf("invalid phone number %q", value)
+	}
+	return types.NewJID(digits.String(), types.DefaultUserServer), nil
 }
 
 func (w whatsmeowService) ReconnectClient(instanceId string) error {
@@ -915,6 +1006,197 @@ func (mycli *MyClient) subscribeLiveLocation(target types.JID) {
 	}()
 }
 
+func (w whatsmeowService) StartLiveLocationForward(instanceID, sourceNumber, targetNumber string, duration time.Duration) error {
+	mycli, ok := w.myClientPointer[instanceID]
+	if !ok || mycli == nil || mycli.WAClient == nil {
+		return fmt.Errorf("WhatsApp client for instance %s is not available", instanceID)
+	}
+	if !mycli.WAClient.IsConnected() {
+		return fmt.Errorf("WhatsApp client for instance %s is not connected", instanceID)
+	}
+	source, err := parseLiveLocationJID(sourceNumber)
+	if err != nil {
+		return fmt.Errorf("invalid live-location source: %w", err)
+	}
+	target, err := parseLiveLocationJID(targetNumber)
+	if err != nil {
+		return fmt.Errorf("invalid live-location target: %w", err)
+	}
+	if source.ToNonAD() == target.ToNonAD() {
+		return fmt.Errorf("live-location source and target must be different")
+	}
+	return mycli.startLiveLocationForward(source, target, duration)
+}
+
+func (w whatsmeowService) StopLiveLocationForward(instanceID, sourceNumber string) error {
+	mycli, ok := w.myClientPointer[instanceID]
+	if !ok || mycli == nil {
+		return fmt.Errorf("WhatsApp client for instance %s is not available", instanceID)
+	}
+	source, err := parseLiveLocationJID(sourceNumber)
+	if err != nil {
+		return fmt.Errorf("invalid live-location source: %w", err)
+	}
+	return mycli.stopLiveLocationForward(source)
+}
+
+func (mycli *MyClient) startLiveLocationForward(source, target types.JID, duration time.Duration) error {
+	if duration <= 0 {
+		duration = time.Hour
+	}
+	if duration < time.Minute || duration > 8*time.Hour {
+		return fmt.Errorf("forwarding duration must be between 1 minute and 8 hours")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), duration)
+	route := &liveLocationForward{
+		source:  source.ToNonAD(),
+		target:  target.ToNonAD(),
+		ctx:     ctx,
+		cancel:  cancel,
+		updates: make(chan liveLocationPoint, 64),
+	}
+	key := route.source.String()
+	mycli.liveLocationMu.Lock()
+	if mycli.liveLocationForwards == nil {
+		mycli.liveLocationForwards = make(map[string]*liveLocationForward)
+	}
+	if previous := mycli.liveLocationForwards[key]; previous != nil {
+		previous.cancel()
+	}
+	mycli.liveLocationForwards[key] = route
+	mycli.liveLocationMu.Unlock()
+
+	go mycli.runLiveLocationForward(key, route)
+	return nil
+}
+
+func (mycli *MyClient) stopLiveLocationForward(source types.JID) error {
+	key := source.ToNonAD().String()
+	mycli.liveLocationMu.Lock()
+	route := mycli.liveLocationForwards[key]
+	if route != nil {
+		delete(mycli.liveLocationForwards, key)
+	}
+	mycli.liveLocationMu.Unlock()
+	if route == nil {
+		return fmt.Errorf("no live-location forwarding rule for %s", key)
+	}
+	route.cancel()
+	return nil
+}
+
+func (mycli *MyClient) queueLiveLocationForward(sender, senderAlt types.JID, point liveLocationPoint) {
+	if mycli == nil {
+		return
+	}
+	candidates := []types.JID{sender.ToNonAD(), senderAlt.ToNonAD()}
+	mycli.liveLocationMu.Lock()
+	var route *liveLocationForward
+	for _, candidate := range candidates {
+		if candidate.IsEmpty() {
+			continue
+		}
+		if found := mycli.liveLocationForwards[candidate.String()]; found != nil {
+			route = found
+			break
+		}
+	}
+	mycli.liveLocationMu.Unlock()
+	if route == nil {
+		return
+	}
+	select {
+	case route.updates <- point:
+	case <-route.ctx.Done():
+	}
+}
+
+// runLiveLocationForward creates a new native live-location share for the
+// target, then mirrors each subsequent coordinate as a LiveLocationMessage.
+// The outgoing sequence belongs to this newly created share; source sequence
+// values are only used for duplicate suppression.
+func (mycli *MyClient) runLiveLocationForward(key string, route *liveLocationForward) {
+	defer func() {
+		route.cancel()
+		mycli.liveLocationMu.Lock()
+		if mycli.liveLocationForwards[key] == route {
+			delete(mycli.liveLocationForwards, key)
+		}
+		mycli.liveLocationMu.Unlock()
+	}()
+	started := false
+	var startedAt time.Time
+	var outgoingSequence int64
+	var lastSourceSequence int64
+	var lastCaption *string
+	for {
+		select {
+		case <-route.ctx.Done():
+			return
+		case point := <-route.updates:
+			if point.Latitude < -90 || point.Latitude > 90 || point.Longitude < -180 || point.Longitude > 180 {
+				continue
+			}
+			if mycli.WAClient == nil || !mycli.WAClient.IsConnected() {
+				if mycli.loggerWrapper != nil {
+					mycli.loggerWrapper.GetLogger(mycli.userID).LogWarn("[%s] Skipping live-location forward update while disconnected", mycli.userID)
+				}
+				continue
+			}
+			if point.Caption != nil {
+				lastCaption = point.Caption
+			}
+			var outgoing *waE2E.Message
+			if !started {
+				outgoing = &waE2E.Message{LocationMessage: &waE2E.LocationMessage{
+					DegreesLatitude:                   proto.Float64(point.Latitude),
+						DegreesLongitude:                  proto.Float64(point.Longitude),
+						IsLive:                            proto.Bool(true),
+						AccuracyInMeters:                  point.AccuracyInMeters,
+						SpeedInMps:                        point.SpeedInMps,
+						DegreesClockwiseFromMagneticNorth: point.DegreesClockwiseFromMagneticNorth,
+						Comment:                           lastCaption,
+				}}
+			} else {
+				if point.Update && point.SequenceNumber > 0 {
+					if point.SequenceNumber <= lastSourceSequence {
+						continue
+					}
+					lastSourceSequence = point.SequenceNumber
+				}
+				outgoingSequence++
+			timeOffset := uint32(time.Since(startedAt).Seconds())
+				outgoing = &waE2E.Message{LiveLocationMessage: &waE2E.LiveLocationMessage{
+					DegreesLatitude:                   proto.Float64(point.Latitude),
+					DegreesLongitude:                  proto.Float64(point.Longitude),
+					AccuracyInMeters:                  point.AccuracyInMeters,
+					SpeedInMps:                        point.SpeedInMps,
+					DegreesClockwiseFromMagneticNorth: point.DegreesClockwiseFromMagneticNorth,
+					Caption:                           lastCaption,
+					SequenceNumber:                    proto.Int64(outgoingSequence),
+					TimeOffset:                        proto.Uint32(timeOffset),
+				}}
+			}
+			sendCtx, cancel := context.WithTimeout(route.ctx, 12*time.Second)
+			_, err := mycli.WAClient.SendMessage(sendCtx, route.target, outgoing)
+			cancel()
+			if err != nil {
+				if mycli.loggerWrapper != nil {
+					mycli.loggerWrapper.GetLogger(mycli.userID).LogError("[%s] Failed to recreate live-location for %s: %v", mycli.userID, route.target.String(), err)
+				}
+				continue
+			}
+			if !started {
+				started = true
+				startedAt = time.Now()
+				if point.Update && point.SequenceNumber > 0 {
+					lastSourceSequence = point.SequenceNumber
+				}
+			}
+		}
+	}
+}
+
 func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 	userID := mycli.userID
 	postMap := make(map[string]interface{})
@@ -1328,15 +1610,31 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 			dataMap = make(map[string]interface{})
 		}
 
-		// Keep a simple discriminator alongside the raw protobuf payload for webhook consumers.
-		isLiveLocation := evt.Message.GetLiveLocationMessage() != nil ||
-			(evt.Message.GetLocationMessage() != nil && evt.Message.GetLocationMessage().GetIsLive())
+		// Decode actual coordinates instead of exposing only the raw protobuf.
+		liveLocation, isLiveLocation := extractLiveLocationPoint(evt.Message)
 		if isLiveLocation {
 			dataMap["messageType"] = "liveLocation"
+			dataMap["liveLocation"] = liveLocation
+			// Flat aliases make webhook consumers independent of protobuf casing.
+			dataMap["latitude"] = liveLocation.Latitude
+			dataMap["longitude"] = liveLocation.Longitude
+			if liveLocation.AccuracyInMeters != nil {
+				dataMap["accuracyInMeters"] = *liveLocation.AccuracyInMeters
+			}
+			if liveLocation.SpeedInMps != nil {
+				dataMap["speedInMps"] = *liveLocation.SpeedInMps
+			}
+			if liveLocation.DegreesClockwiseFromMagneticNorth != nil {
+				dataMap["degreesClockwiseFromMagneticNorth"] = *liveLocation.DegreesClockwiseFromMagneticNorth
+			}
+			if liveLocation.Caption != nil {
+				dataMap["caption"] = *liveLocation.Caption
+			}
 			if !evt.Info.IsFromMe {
-				// The conversation JID is the target for location/subscribe
-				// (a direct chat JID for 1:1 shares, the group JID for group shares).
+				// Subscribe to the source chat and mirror the decoded point to any
+				// explicitly configured sourceNumber -> customerNumber route.
 				mycli.subscribeLiveLocation(evt.Info.Chat)
+				mycli.queueLiveLocationForward(evt.Info.Sender, evt.Info.SenderAlt, liveLocation)
 			}
 		}
 
