@@ -1158,14 +1158,11 @@ func (mycli *MyClient) runLiveLocationForward(key string, route *liveLocationFor
 						Comment:                           lastCaption,
 				}}
 			} else {
-				if point.Update && point.SequenceNumber > 0 {
-					if point.SequenceNumber <= lastSourceSequence {
-						continue
-					}
-					lastSourceSequence = point.SequenceNumber
+				if point.Update && point.SequenceNumber > 0 && point.SequenceNumber <= lastSourceSequence {
+					continue
 				}
 				outgoingSequence++
-			timeOffset := uint32(time.Since(startedAt).Seconds())
+				timeOffset := uint32(time.Since(startedAt).Seconds())
 				outgoing = &waE2E.Message{LiveLocationMessage: &waE2E.LiveLocationMessage{
 					DegreesLatitude:                   proto.Float64(point.Latitude),
 					DegreesLongitude:                  proto.Float64(point.Longitude),
@@ -1189,9 +1186,9 @@ func (mycli *MyClient) runLiveLocationForward(key string, route *liveLocationFor
 			if !started {
 				started = true
 				startedAt = time.Now()
-				if point.Update && point.SequenceNumber > 0 {
-					lastSourceSequence = point.SequenceNumber
-				}
+			}
+			if point.Update && point.SequenceNumber > lastSourceSequence {
+				lastSourceSequence = point.SequenceNumber
 			}
 		}
 	}
