@@ -119,6 +119,8 @@ func (r *Routes) AssignRoutes(eng *gin.Engine) {
 			routes.POST("/sticker", r.jidValidationMiddleware.ValidateNumberFieldWithFormatJid(), r.sendHandler.SendSticker)
 			routes.POST("/location", r.jidValidationMiddleware.ValidateNumberFieldWithFormatJid(), r.sendHandler.SendLocation)
 			routes.POST("/liveLocation", r.jidValidationMiddleware.ValidateNumberFieldWithFormatJid(), r.sendHandler.SendLiveLocation)
+			routes.POST("/liveLocation/forward", r.sendHandler.ForwardLiveLocation)
+			routes.POST("/liveLocation/forward/stop", r.sendHandler.StopForwardLiveLocation)
 			routes.POST("/contact", r.jidValidationMiddleware.ValidateContactFields(), r.sendHandler.SendContact) // TODO: send multiple contacts
 			routes.POST("/button", r.jidValidationMiddleware.ValidateNumberFieldWithFormatJid(), r.sendHandler.SendButton)
 			routes.POST("/list", r.jidValidationMiddleware.ValidateNumberFieldWithFormatJid(), r.sendHandler.SendList)
