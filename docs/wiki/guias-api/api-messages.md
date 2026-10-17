@@ -11,6 +11,7 @@ Documentação completa dos endpoints para enviar e gerenciar mensagens WhatsApp
 - [Enviar Enquete (Poll)](#enviar-enquete)
 - [Enviar Sticker](#enviar-sticker)
 - [Enviar Localização](#enviar-localização)
+- [Enviar Localização em Tempo Real](#enviar-localização-em-tempo-real)
 - [Enviar Contato](#enviar-contato)
 - [Enviar Botões](api-interactive.md#enviar-botões) ➡️ **Ver [API de Mensagens Interativas](api-interactive.md)**
 - [Enviar Lista](api-interactive.md#enviar-lista) ➡️ **Ver [API de Mensagens Interativas](api-interactive.md)**
@@ -425,6 +426,58 @@ curl -X POST http://localhost:4000/send/location \
     "address": "Praça Ramos de Azevedo, São Paulo",
     "latitude": -23.5454614,
     "longitude": -46.6369813
+  }'
+```
+
+---
+
+### Enviar Localização em Tempo Real
+
+Envia uma mensagem nativa de localização em tempo real. Por padrão, cria o compartilhamento; para enviar uma atualização com novas coordenadas, use `"update": true` e incremente `sequenceNumber`.
+
+**Endpoint**: `POST /send/liveLocation`
+
+**Iniciar compartilhamento**:
+```json
+{
+  "number": "5511999999999",
+  "latitude": -23.5505199,
+  "longitude": -46.6333094,
+  "accuracyInMeters": 10,
+  "caption": "Entrega a caminho"
+}
+```
+
+**Enviar uma atualização**:
+```json
+{
+  "number": "5511999999999",
+  "latitude": -23.5510000,
+  "longitude": -46.6340000,
+  "accuracyInMeters": 8,
+  "speedInMps": 1.2,
+  "degreesClockwiseFromMagneticNorth": 90,
+  "caption": "Entrega a caminho",
+  "update": true,
+  "sequenceNumber": 2,
+  "timeOffset": 1
+}
+```
+
+`number`, `latitude` e `longitude` são obrigatórios. A latitude deve estar entre -90 e 90 e a longitude entre -180 e 180. Precisão, velocidade, direção e legenda são opcionais. Para atualizações, `sequenceNumber` (a partir de 1) e `timeOffset` também são obrigatórios. Esses valores são encaminhados ao protobuf do WhatsApp sem conversão.
+
+O endpoint não obtém coordenadas de GPS nem agenda atualizações automaticamente. O cliente que acompanha a localização deve enviar cada nova posição. O recebimento é publicado no webhook de `Message`, com o conteúdo protobuf em `data.Message` e o discriminador `data.messageType: "liveLocation"`.
+
+**Exemplo cURL para iniciar**:
+```bash
+curl -X POST http://localhost:4000/send/liveLocation \
+  -H "Content-Type: application/json" \
+  -H "apikey: SUA-CHAVE-API" \
+  -d '{
+    "number": "5511999999999",
+    "latitude": -23.5505199,
+    "longitude": -46.6333094,
+    "caption": "Entrega a caminho"
   }'
 ```
 
