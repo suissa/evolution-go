@@ -169,8 +169,9 @@ type LiveLocationStruct struct {
 	SpeedInMps                        *float32     `json:"speedInMps,omitempty"`
 	DegreesClockwiseFromMagneticNorth *uint32      `json:"degreesClockwiseFromMagneticNorth,omitempty"`
 	Caption                           *string      `json:"caption,omitempty"`
-	SequenceNumber                    *int64       `json:"sequenceNumber"`
-	TimeOffset                        *uint32      `json:"timeOffset"`
+	SequenceNumber                    *int64       `json:"sequenceNumber,omitempty"`
+	TimeOffset                        *uint32      `json:"timeOffset,omitempty"`
+	Update                            bool         `json:"update,omitempty"`
 	Delay                             int32        `json:"delay,omitempty"`
 	MentionedJID                      []string     `json:"mentionedJid,omitempty"`
 	MentionAll                        bool         `json:"mentionAll,omitempty"`
@@ -1708,18 +1709,35 @@ func (s *sendService) SendLiveLocation(data *LiveLocationStruct, instance *insta
 		return nil, err
 	}
 
-	msg := &waE2E.Message{LiveLocationMessage: &waE2E.LiveLocationMessage{
-		DegreesLatitude:                   data.Latitude,
-		DegreesLongitude:                  data.Longitude,
-		AccuracyInMeters:                  data.AccuracyInMeters,
-		SpeedInMps:                        data.SpeedInMps,
-		DegreesClockwiseFromMagneticNorth: data.DegreesClockwiseFromMagneticNorth,
-		Caption:                           data.Caption,
-		SequenceNumber:                    data.SequenceNumber,
-		TimeOffset:                        data.TimeOffset,
-	}}
+	var msg *waE2E.Message
+	messageType := "LocationMessage"
+	if data.Update {
+		msg = &waE2E.Message{LiveLocationMessage: &waE2E.LiveLocationMessage{
+			DegreesLatitude:                   data.Latitude,
+			DegreesLongitude:                  data.Longitude,
+			AccuracyInMeters:                  data.AccuracyInMeters,
+			SpeedInMps:                        data.SpeedInMps,
+			DegreesClockwiseFromMagneticNorth: data.DegreesClockwiseFromMagneticNorth,
+			Caption:                           data.Caption,
+			SequenceNumber:                    data.SequenceNumber,
+			TimeOffset:                        data.TimeOffset,
+		}}
+		messageType = "LiveLocationMessage"
+	} else {
+		// WhatsApp starts live sharing with LocationMessage.IsLive=true.
+		// Subsequent coordinate changes use LiveLocationMessage updates.
+		msg = &waE2E.Message{LocationMessage: &waE2E.LocationMessage{
+			DegreesLatitude:                   data.Latitude,
+			DegreesLongitude:                  data.Longitude,
+			IsLive:                            proto.Bool(true),
+			AccuracyInMeters:                  data.AccuracyInMeters,
+			SpeedInMps:                        data.SpeedInMps,
+			DegreesClockwiseFromMagneticNorth: data.DegreesClockwiseFromMagneticNorth,
+			Comment:                           data.Caption,
+		}}
+	}
 
-	message, err := s.SendMessage(instance, msg, "LiveLocationMessage", &SendDataStruct{
+	message, err := s.SendMessage(instance, msg, messageType, &SendDataStruct{
 		Id:           data.Id,
 		Number:       data.Number,
 		Quoted:       data.Quoted,
