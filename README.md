@@ -74,6 +74,8 @@ cp .env.example .env
 make dev
 ```
 
+The Makefile applies a small, version-pinned patch to the cached `whatsmeow` module before builds and tests. This enables receiving encrypted live-location updates without changing the upstream module version. Use `make build`, `make test`, and `make dev` so the patch is applied automatically. If you run Go commands directly, run `go run ./scripts/patch-whatsmeow` first. Run `go run ./scripts/patch-whatsmeow -restore` before `go mod verify`.
+
 > Run `make help` to see all available commands. See [COMMANDS.md](./COMMANDS.md) for detailed workflows.
 
 ---
