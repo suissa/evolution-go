@@ -481,6 +481,40 @@ curl -X POST http://localhost:4000/send/liveLocation \
   }'
 ```
 
+### Encaminhar uma liveLocation recebida para o cliente
+
+O encaminhamento recria o compartilhamento como uma nova liveLocation enviada pela instância Evolution (não é um encaminhamento nativo da mensagem original). Configure a regra **antes** de o motoboy compartilhar a localização; se o compartilhamento já estiver em andamento, o primeiro ponto recebido após a configuração inicia a nova liveLocation para o cliente.
+
+**Endpoint**: `POST /send/liveLocation/forward`
+
+```json
+{
+  "sourceNumber": "5511988887777",
+  "number": "5511977778888",
+  "durationMinutes": 60
+}
+```
+
+- `sourceNumber`: número do remetente que compartilhará a localização com a conta conectada à Evolution.
+- `number`: número do cliente que receberá a liveLocation recriada.
+- `durationMinutes`: tempo máximo de encaminhamento (padrão de 60 minutos; máximo de 480 minutos / 8 horas).
+
+Quando chegam atualizações decifradas, a Evolution extrai latitude, longitude, precisão, velocidade, direção, legenda e sequência da mensagem protobuf. A primeira coordenada inicia um novo compartilhamento para o cliente; os pontos seguintes são enviados como atualizações nativas, com sequência e tempo decorrido próprios.
+
+**Interromper o encaminhamento**:
+
+`POST /send/liveLocation/forward/stop`
+
+```json
+{
+  "sourceNumber": "5511988887777"
+}
+```
+
+Parar a regra interrompe os próximos pontos, mas não cancela a liveLocation já entregue ao WhatsApp do cliente; ela permanece visível até expirar no WhatsApp.
+
+No webhook `Message`, a localização decodificada fica em `data.liveLocation.latitude` e `data.liveLocation.longitude`. Os mesmos valores também são expostos em `data.latitude` e `data.longitude`; `data.messageType` vale `liveLocation`.
+
 ---
 
 ### Enviar Contato
