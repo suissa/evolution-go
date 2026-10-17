@@ -44,6 +44,8 @@ type SendService interface {
 	SendSticker(data *StickerStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
 	SendLocation(data *LocationStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
 	SendLiveLocation(data *LiveLocationStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
+	ForwardLiveLocation(data *LiveLocationForwardStruct, instance *instance_model.Instance) error
+	StopLiveLocationForward(data *LiveLocationForwardStruct, instance *instance_model.Instance) error
 	SendContact(data *ContactStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
 	SendButton(data *ButtonStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
 	SendList(data *ListStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
@@ -177,6 +179,14 @@ type LiveLocationStruct struct {
 	MentionAll                        bool         `json:"mentionAll,omitempty"`
 	FormatJid                         *bool        `json:"formatJid,omitempty"`
 	Quoted                            QuotedStruct `json:"quoted,omitempty"`
+}
+
+// LiveLocationForwardStruct configures automatic recreation of an incoming
+// live-location share to another recipient for this Evolution instance.
+type LiveLocationForwardStruct struct {
+	SourceNumber   string `json:"sourceNumber"`
+	Number         string `json:"number,omitempty"`
+	DurationMinutes uint32 `json:"durationMinutes,omitempty"`
 }
 
 type ContactStruct struct {
@@ -1751,6 +1761,44 @@ func (s *sendService) SendLiveLocation(data *LiveLocationStruct, instance *insta
 	}
 
 	return message, nil
+}
+
+// ForwardLiveLocation starts an in-memory source -> target relay. The relay
+// waits for the next incoming live-location point from sourceNumber and sends
+// a fresh native live-location share to number.
+func (s *sendService) ForwardLiveLocation(data *LiveLocationForwardStruct, instance *instance_model.Instance) error {
+	if data == nil {
+		return fmt.Errorf("live-location forwarding data is required")
+	}
+	if strings.TrimSpace(data.SourceNumber) == "" {
+		return fmt.Errorf("sourceNumber is required")
+	}
+	if strings.TrimSpace(data.Number) == "" {
+		return fmt.Errorf("number (customer destination) is required")
+	}
+	durationMinutes := data.DurationMinutes
+	if durationMinutes == 0 {
+		durationMinutes = 60
+	}
+	if durationMinutes > 8*60 {
+		return fmt.Errorf("durationMinutes cannot exceed 480 (8 hours)")
+	}
+	return s.whatsmeowService.StartLiveLocationForward(
+		instance.Id,
+		data.SourceNumber,
+		data.Number,
+		time.Duration(durationMinutes)*time.Minute,
+	)
+}
+
+// StopLiveLocationForward stops relaying future coordinates for a source. A
+// live-location share already sent to the target remains visible until WhatsApp
+// expires that share; this only stops new relay updates.
+func (s *sendService) StopLiveLocationForward(data *LiveLocationForwardStruct, instance *instance_model.Instance) error {
+	if data == nil || strings.TrimSpace(data.SourceNumber) == "" {
+		return fmt.Errorf("sourceNumber is required")
+	}
+	return s.whatsmeowService.StopLiveLocationForward(instance.Id, data.SourceNumber)
 }
 
 func (s *sendService) SendContact(data *ContactStruct, instance *instance_model.Instance) (*MessageSendStruct, error) {
