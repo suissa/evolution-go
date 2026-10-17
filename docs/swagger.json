@@ -3110,6 +3110,27 @@
                 }
             }
         },
+        "/send/liveLocation": {
+            "post": {
+                "description": "Sends a live-location start or update. Updates require an increasing sequenceNumber and timeOffset.",
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["Send Message"],
+                "summary": "Send a live-location message",
+                "parameters": [{
+                    "description": "Live-location data",
+                    "name": "message",
+                    "in": "body",
+                    "required": true,
+                    "schema": {"$ref": "#/definitions/github_com_EvolutionAPI_evolution-go_pkg_sendMessage_service.LiveLocationStruct"}
+                }],
+                "responses": {
+                    "200": {"description": "success", "schema": {"$ref": "#/definitions/gin.H"}},
+                    "400": {"description": "Error on validation", "schema": {"$ref": "#/definitions/gin.H"}},
+                    "500": {"description": "Internal server error", "schema": {"$ref": "#/definitions/gin.H"}}
+                }
+            }
+        },
         "/send/media": {
             "post": {
                 "description": "Send a media message",
@@ -5055,6 +5076,27 @@
                 "quoted": {
                     "$ref": "#/definitions/github_com_EvolutionAPI_evolution-go_pkg_sendMessage_service.QuotedStruct"
                 }
+            }
+        },
+        "github_com_EvolutionAPI_evolution-go_pkg_sendMessage_service.LiveLocationStruct": {
+            "type": "object",
+            "properties": {
+                "accuracyInMeters": {"type": "integer"},
+                "caption": {"type": "string"},
+                "degreesClockwiseFromMagneticNorth": {"type": "integer"},
+                "delay": {"type": "integer"},
+                "formatJid": {"type": "boolean"},
+                "id": {"type": "string"},
+                "latitude": {"type": "number"},
+                "longitude": {"type": "number"},
+                "mentionAll": {"type": "boolean"},
+                "mentionedJid": {"type": "array", "items": {"type": "string"}},
+                "number": {"type": "string"},
+                "quoted": {"$ref": "#/definitions/github_com_EvolutionAPI_evolution-go_pkg_sendMessage_service.QuotedStruct"},
+                "sequenceNumber": {"type": "integer"},
+                "speedInMps": {"type": "number"},
+                "timeOffset": {"type": "integer"},
+                "update": {"type": "boolean"}
             }
         },
         "github_com_EvolutionAPI_evolution-go_pkg_sendMessage_service.MediaStruct": {
