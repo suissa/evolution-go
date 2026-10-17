@@ -1,4 +1,4 @@
-.PHONY: help dev run build test clean swagger deps docker-build docker-run install setup migrate-up migrate-down logs
+.PHONY: help dev run watch build build-linux build-windows test test-coverage test-race bench clean swagger deps docker-build docker-run install setup migrate-up migrate-down logs patch-whatsmeow
 
 # Configurações
 APP_NAME=evolution-go
@@ -24,15 +24,15 @@ help: ## Exibe esta mensagem de ajuda
 
 ##@ Desenvolvimento
 
-dev: ## Roda a aplicação em modo desenvolvimento
+dev: patch-whatsmeow ## Roda a aplicação em modo desenvolvimento
 	@echo "$(GREEN)🚀 Rodando Evolution GO em modo desenvolvimento...$(NC)"
 	$(GO) run $(LDFLAGS) $(MAIN_PATH) -dev
 
-run: ## Roda a aplicação em modo produção
+run: patch-whatsmeow ## Roda a aplicação em modo produção
 	@echo "$(GREEN)🚀 Rodando Evolution GO...$(NC)"
 	$(GO) run $(MAIN_PATH)
 
-watch: ## Roda a aplicação com hot reload (requer air)
+watch: patch-whatsmeow ## Roda a aplicação com hot reload (requer air)
 	@if command -v air > /dev/null; then \
 		echo "$(GREEN)🔥 Rodando com hot reload...$(NC)"; \
 		air; \
@@ -43,19 +43,19 @@ watch: ## Roda a aplicação com hot reload (requer air)
 
 ##@ Build
 
-build: ## Compila a aplicação
+build: patch-whatsmeow ## Compila a aplicação
 	@echo "$(GREEN)🔨 Compilando $(APP_NAME)...$(NC)"
 	@mkdir -p $(BUILD_DIR)
 	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(APP_NAME) $(MAIN_PATH)
 	@echo "$(GREEN)✅ Build completo: $(BUILD_DIR)/$(APP_NAME)$(NC)"
 
-build-linux: ## Compila para Linux
+build-linux: patch-whatsmeow ## Compila para Linux
 	@echo "$(GREEN)🔨 Compilando para Linux...$(NC)"
 	@mkdir -p $(BUILD_DIR)
 	GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(APP_NAME)-linux-amd64 $(MAIN_PATH)
 	@echo "$(GREEN)✅ Build Linux completo$(NC)"
 
-build-windows: ## Compila para Windows
+build-windows: patch-whatsmeow ## Compila para Windows
 	@echo "$(GREEN)🔨 Compilando para Windows...$(NC)"
 	@mkdir -p $(BUILD_DIR)
 	GOOS=windows GOARCH=amd64 $(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(APP_NAME)-windows-amd64.exe $(MAIN_PATH)
@@ -71,28 +71,32 @@ install: build ## Compila e instala no GOPATH
 
 ##@ Testes
 
-test: ## Roda todos os testes
+test: patch-whatsmeow ## Roda todos os testes
 	@echo "$(GREEN)🧪 Rodando testes...$(NC)"
 	$(GO) test -v ./...
 
-test-coverage: ## Roda testes com cobertura
+test-coverage: patch-whatsmeow ## Roda testes com cobertura
 	@echo "$(GREEN)🧪 Rodando testes com cobertura...$(NC)"
 	$(GO) test -v -coverprofile=coverage.out ./...
 	$(GO) tool cover -html=coverage.out -o coverage.html
 	@echo "$(GREEN)✅ Cobertura gerada: coverage.html$(NC)"
 
-test-race: ## Roda testes verificando race conditions
+test-race: patch-whatsmeow ## Roda testes verificando race conditions
 	@echo "$(GREEN)🧪 Rodando testes com race detector...$(NC)"
 	$(GO) test -race -v ./...
 
-bench: ## Roda benchmarks
+bench: patch-whatsmeow ## Roda benchmarks
 	@echo "$(GREEN)⚡ Rodando benchmarks...$(NC)"
 	$(GO) test -bench=. -benchmem ./...
 
 ##@ Dependências
 
+patch-whatsmeow: ## Aplica suporte ao recebimento de liveLocation no whatsmeow
+	$(GO) run ./scripts/patch-whatsmeow
+
 deps: ## Instala dependências
 	@echo "$(GREEN)📦 Instalando dependências...$(NC)"
+	$(GO) run ./scripts/patch-whatsmeow -restore
 	$(GO) mod download
 	$(GO) mod verify
 	@echo "$(GREEN)✅ Dependências instaladas$(NC)"
@@ -100,6 +104,7 @@ deps: ## Instala dependências
 deps-update: ## Atualiza dependências
 	@echo "$(GREEN)📦 Atualizando dependências...$(NC)"
 	$(GO) get -u ./...
+	$(GO) run ./scripts/patch-whatsmeow
 	$(GO) mod tidy
 	@echo "$(GREEN)✅ Dependências atualizadas$(NC)"
 
@@ -114,13 +119,14 @@ deps-reset: ## Limpa cache e reinstala dependências (força uso do código loca
 	$(GO) clean -cache -modcache -i -r
 	@echo "$(YELLOW)Download de módulos...$(NC)"
 	$(GO) mod download
+	$(GO) run ./scripts/patch-whatsmeow
 	@echo "$(YELLOW)Organizando módulos...$(NC)"
 	$(GO) mod tidy
 	@echo "$(GREEN)✅ Dependências resetadas e atualizadas$(NC)"
 
 ##@ Documentação
 
-swagger: ## Gera documentação Swagger
+swagger: patch-whatsmeow ## Gera documentação Swagger
 	@echo "$(GREEN)📚 Gerando documentação Swagger...$(NC)"
 	@if command -v swag > /dev/null; then \
 		swag init -g $(MAIN_PATH) -o ./docs; \
@@ -185,7 +191,7 @@ fmt: ## Formata o código
 	$(GO) fmt ./...
 	@echo "$(GREEN)✅ Código formatado$(NC)"
 
-lint: ## Executa linter (requer golangci-lint)
+lint: patch-whatsmeow ## Executa linter (requer golangci-lint)
 	@echo "$(GREEN)🔍 Executando linter...$(NC)"
 	@if command -v golangci-lint > /dev/null; then \
 		golangci-lint run ./...; \
@@ -195,7 +201,7 @@ lint: ## Executa linter (requer golangci-lint)
 		exit 1; \
 	fi
 
-vet: ## Executa go vet
+vet: patch-whatsmeow ## Executa go vet
 	@echo "$(GREEN)🔍 Executando go vet...$(NC)"
 	$(GO) vet ./...
 	@echo "$(GREEN)✅ Vet completo$(NC)"
