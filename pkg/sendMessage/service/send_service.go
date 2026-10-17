@@ -43,6 +43,7 @@ type SendService interface {
 	SendPoll(data *PollStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
 	SendSticker(data *StickerStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
 	SendLocation(data *LocationStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
+	SendLiveLocation(data *LiveLocationStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
 	SendContact(data *ContactStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
 	SendButton(data *ButtonStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
 	SendList(data *ListStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
@@ -155,6 +156,26 @@ type LocationStruct struct {
 	MentionAll   bool         `json:"mentionAll"`
 	FormatJid    *bool        `json:"formatJid,omitempty"`
 	Quoted       QuotedStruct `json:"quoted"`
+}
+
+// LiveLocationStruct describes a native WhatsApp live-location message or update.
+// Send subsequent updates with an increasing sequenceNumber as fresh GPS coordinates become available.
+type LiveLocationStruct struct {
+	Number                            string       `json:"number"`
+	Id                                string       `json:"id,omitempty"`
+	Latitude                          *float64     `json:"latitude"`
+	Longitude                         *float64     `json:"longitude"`
+	AccuracyInMeters                  *uint32      `json:"accuracyInMeters,omitempty"`
+	SpeedInMps                        *float32     `json:"speedInMps,omitempty"`
+	DegreesClockwiseFromMagneticNorth *uint32      `json:"degreesClockwiseFromMagneticNorth,omitempty"`
+	Caption                           *string      `json:"caption,omitempty"`
+	SequenceNumber                    *int64       `json:"sequenceNumber"`
+	TimeOffset                        *uint32      `json:"timeOffset"`
+	Delay                             int32        `json:"delay,omitempty"`
+	MentionedJID                      []string     `json:"mentionedJid,omitempty"`
+	MentionAll                        bool         `json:"mentionAll,omitempty"`
+	FormatJid                         *bool        `json:"formatJid,omitempty"`
+	Quoted                            QuotedStruct `json:"quoted,omitempty"`
 }
 
 type ContactStruct struct {
@@ -1681,6 +1702,39 @@ func (s *sendService) SendLocation(data *LocationStruct, instance *instance_mode
 	return message, nil
 }
 
+func (s *sendService) SendLiveLocation(data *LiveLocationStruct, instance *instance_model.Instance) (*MessageSendStruct, error) {
+	_, err := s.ensureClientConnected(instance.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	msg := &waE2E.Message{LiveLocationMessage: &waE2E.LiveLocationMessage{
+		DegreesLatitude:                   data.Latitude,
+		DegreesLongitude:                  data.Longitude,
+		AccuracyInMeters:                  data.AccuracyInMeters,
+		SpeedInMps:                        data.SpeedInMps,
+		DegreesClockwiseFromMagneticNorth: data.DegreesClockwiseFromMagneticNorth,
+		Caption:                           data.Caption,
+		SequenceNumber:                    data.SequenceNumber,
+		TimeOffset:                        data.TimeOffset,
+	}}
+
+	message, err := s.SendMessage(instance, msg, "LiveLocationMessage", &SendDataStruct{
+		Id:           data.Id,
+		Number:       data.Number,
+		Quoted:       data.Quoted,
+		Delay:        data.Delay,
+		MentionAll:   data.MentionAll,
+		MentionedJID: data.MentionedJID,
+		FormatJid:    data.FormatJid,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return message, nil
+}
+
 func (s *sendService) SendContact(data *ContactStruct, instance *instance_model.Instance) (*MessageSendStruct, error) {
 	_, err := s.ensureClientConnected(instance.Id)
 	if err != nil {
@@ -2456,6 +2510,12 @@ func (s *sendService) SendMessage(instance *instance_model.Instance, msg *waE2E.
 				Participant:   proto.String(data.Quoted.Participant),
 				QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
 			}
+		case "LiveLocationMessage":
+			msg.LiveLocationMessage.ContextInfo = &waE2E.ContextInfo{
+				StanzaID:      proto.String(data.Quoted.MessageID),
+				Participant:   proto.String(data.Quoted.Participant),
+				QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
+			}
 		case "ContactMessage":
 			msg.ContactMessage.ContextInfo = &waE2E.ContextInfo{
 				StanzaID:      proto.String(data.Quoted.MessageID),
@@ -2542,6 +2602,8 @@ func (s *sendService) SendMessage(instance *instance_model.Instance, msg *waE2E.
 			msg.StickerMessage.ContextInfo = &waE2E.ContextInfo{}
 		case "LocationMessage":
 			msg.LocationMessage.ContextInfo = &waE2E.ContextInfo{}
+		case "LiveLocationMessage":
+			msg.LiveLocationMessage.ContextInfo = &waE2E.ContextInfo{}
 		case "ContactMessage":
 			msg.ContactMessage.ContextInfo = &waE2E.ContextInfo{}
 		case "InteractiveMessage":
@@ -2606,6 +2668,11 @@ func (s *sendService) SendMessage(instance *instance_model.Instance, msg *waE2E.
 			if msg.LocationMessage != nil && msg.LocationMessage.ContextInfo != nil {
 				msg.LocationMessage.ContextInfo.ForwardingScore = data.ForwardingScore
 				msg.LocationMessage.ContextInfo.IsForwarded = proto.Bool(true)
+			}
+		case "LiveLocationMessage":
+			if msg.LiveLocationMessage != nil && msg.LiveLocationMessage.ContextInfo != nil {
+				msg.LiveLocationMessage.ContextInfo.ForwardingScore = data.ForwardingScore
+				msg.LiveLocationMessage.ContextInfo.IsForwarded = proto.Bool(true)
 			}
 		case "ContactMessage":
 			if msg.ContactMessage != nil && msg.ContactMessage.ContextInfo != nil {
@@ -2687,6 +2754,11 @@ func (s *sendService) SendMessage(instance *instance_model.Instance, msg *waE2E.
 					msg.LocationMessage.ContextInfo = &waE2E.ContextInfo{}
 				}
 				msg.LocationMessage.ContextInfo.MentionedJID = mentionedJIDs
+			case "LiveLocationMessage":
+				if msg.LiveLocationMessage.ContextInfo == nil {
+					msg.LiveLocationMessage.ContextInfo = &waE2E.ContextInfo{}
+				}
+				msg.LiveLocationMessage.ContextInfo.MentionedJID = mentionedJIDs
 			case "ContactMessage":
 				if msg.ContactMessage.ContextInfo == nil {
 					msg.ContactMessage.ContextInfo = &waE2E.ContextInfo{}
@@ -2743,6 +2815,11 @@ func (s *sendService) SendMessage(instance *instance_model.Instance, msg *waE2E.
 					msg.LocationMessage.ContextInfo = &waE2E.ContextInfo{}
 				}
 				msg.LocationMessage.ContextInfo.MentionedJID = data.MentionedJID
+			case "LiveLocationMessage":
+				if msg.LiveLocationMessage.ContextInfo == nil {
+					msg.LiveLocationMessage.ContextInfo = &waE2E.ContextInfo{}
+				}
+				msg.LiveLocationMessage.ContextInfo.MentionedJID = data.MentionedJID
 			case "ContactMessage":
 				if msg.ContactMessage.ContextInfo == nil {
 					msg.ContactMessage.ContextInfo = &waE2E.ContextInfo{}
