@@ -889,7 +889,15 @@ func (mycli *MyClient) teardownQR(reason string, forceLogout bool) {
  		ticker := time.NewTicker(30 * time.Second)
  		defer ticker.Stop()
  		for {
- 			requestCtx, requestCancel := context.WithTimeout(ctx, 12*time.Second)
+ 			if !mycli.WAClient.IsConnected() {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					continue
+				}
+			}
+			requestCtx, requestCancel := context.WithTimeout(ctx, 12*time.Second)
  			err := mycli.WAClient.SubscribeLiveLocation(requestCtx, target)
  			requestCancel()
  			if err != nil {
