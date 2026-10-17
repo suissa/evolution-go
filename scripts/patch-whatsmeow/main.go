@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -203,16 +202,16 @@ func run() error {
 	}{
 		{
 			name: "sort import",
-			old:  "	"runtime/debug"
-	"strconv"",
-			new:  "	"runtime/debug"
+			old: `	"runtime/debug"
+	"strconv"`,
+			new: `	"runtime/debug"
 	"sort"
-	"strconv"",
+	"strconv"`,
 		},
 		{
 			name: "decryption child ordering",
-			old:  "	children := node.GetChildren()
-	cli.Log.Debugf("Decrypting message from %s", info.SourceString())",
+			old: `	children := node.GetChildren()
+	cli.Log.Debugf("Decrypting message from %s", info.SourceString())`,
 			new: `	children := append([]waBinary.Node(nil), node.GetChildren()...)
 	isGroupEncryptedNode := func(child waBinary.Node) bool {
 		if child.Tag != "enc" {
@@ -322,5 +321,3 @@ func writeExtensionFiles(moduleDir, locationPath, testPath string) error {
 	return nil
 }
 
-// Keep imports used by generated text checked by gofmt when this tool is run.
-var _ = sort.SliceStable
