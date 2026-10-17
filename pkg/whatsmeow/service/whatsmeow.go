@@ -1266,6 +1266,12 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 			dataMap = make(map[string]interface{})
 		}
 
+		// Keep a simple discriminator alongside the raw protobuf payload for webhook consumers.
+		if evt.Message.GetLiveLocationMessage() != nil ||
+			(evt.Message.GetLocationMessage() != nil && evt.Message.GetLocationMessage().GetIsLive()) {
+			dataMap["messageType"] = "liveLocation"
+		}
+
 		referral := extractReferralFromMessage(evt.Message)
 
 		if evt.Message.GetPollUpdateMessage() != nil {
