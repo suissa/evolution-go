@@ -74,6 +74,7 @@ install: build ## Compila e instala no GOPATH
 test: patch-whatsmeow ## Roda todos os testes
 	@echo "$(GREEN)🧪 Rodando testes...$(NC)"
 	$(GO) test -v ./...
+	$(GO) test go.mau.fi/whatsmeow -run TestIsFastRatchetSenderKeyMessage
 
 test-coverage: patch-whatsmeow ## Roda testes com cobertura
 	@echo "$(GREEN)🧪 Rodando testes com cobertura...$(NC)"
